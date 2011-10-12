@@ -159,10 +159,9 @@ systemctl start dhcpd.service
 \end{lstlisting}
 
 \section{Virtual Machines}
-Default minimal install of SL6.1 is quite sufficient and depending on setup only few packages are required which are listed in later sections. It shouldn't be hard to create kickstart file or pupet configuration. Only additional steps are to add repositories\footnote{\url{http://v3.sk/~lkundrak/el6-fedora.repo}} for these packages:
+Default minimal install of SL6.1 is quite sufficient and depending on setup only few packages are required which are listed in later sections. It shouldn't be hard to create kickstart file or pupet configuration. Only additional steps are to add repositories for these packages:
 \begin{lstlisting}
-yum install yum-plugin-priorities
-curl http://v3.sk/~lkundrak/el6-fedora.repo > /etc/yum.repos.d/el6-fedora.repo
+yum install http://download.fedora.redhat.com/pub/epel/6/i386/epel-release-6-5.noarch.rpm
 \end{lstlisting}
 Update might be broken because of *-logos packages so update with:
 \begin{lstlisting}
@@ -442,14 +441,12 @@ define host{
           contact_groups        haters
           register              0                     ; DONT REGISTER THIS - ITS A TEMPLATE
           }
-
 define host{
           use       linux-nrpe                        ; Inherit default values from a template
           host_name Splunk                            ; The name we're giving to this server
           alias     Splunk machine                    ; A longer name for the server
           address   192.168.100.10                    ; IP address of the server
           }
-
 define hostgroup {
         hostgroup_name  nrpe-hosts
         alias           NRPE group
@@ -466,12 +463,11 @@ define service{
 # Define a service to check the disk space of the root partition
 # on the local machine.  Warning if < 20% free, critical if
 # < 10% free space on partition.
-
 define service{
         use                             generic-service
         hostgroup_name                  nrpe-hosts
         service_description             Root Partition
-	    check_command                   check_nrpe!check_local_disk!20%!10%!/
+	    check_command                   check_nrpe!check_disk!20%!10%!/
         }
 # Define a service to check the number of currently logged in
 # users on the local machine.  Warning if > 20 users, critical
@@ -480,7 +476,7 @@ define service{
         use                             generic-service
         hostgroup_name                  nrpe-hosts
         service_description             Current Users
-	    check_command                   check_nrpe!check_local_users!20!50
+	    check_command                   check_nrpe!check_users!20!50
         }
 # Define a service to check the number of currently running procs
 # on the local machine.  Warning if > 250 processes, critical if
@@ -489,14 +485,14 @@ define service{
         use                             generic-service
         hostgroup_name                  nrpe_hosts
         service_description             Total Processes
-	    check_command                   check_nrpe!check_local_procs!250!400!RSZDT
+	    check_command                   check_nrpe!check_procs!250!400!RSZDT
         }
 # Define a service to check the load on the local machine. 
 define service{
         use                             generic-service
         hostgroup                       nrpe-hosts
         service_description             Current Load
-	    check_command			        check_nrpe!check_local_load!5.0,4.0,3.0!10.0,6.0,4.0
+	    check_command			        check_nrpe!check_load!5.0,4.0,3.0!10.0,6.0,4.0
         }
 # Define a service to check the swap usage the local machine. 
 # Critical if less than 10% of swap is free, warning if less than 20% is free
@@ -504,7 +500,7 @@ define service{
         use                             generic-service
         hostgroup_name                  nrpe_hosts
         service_description             Swap Usage
-	    check_command			        check_nrpe!check_local_swap!20!10
+	    check_command			        check_nrpe!check_swap!20!10
         }
 # Define a service to check SSH on the local machine.
 # Disable notifications for this service by default, as not all users may have SSH enabled.
@@ -528,9 +524,62 @@ define service{
 Restart \emph{nagios} and check web interface \url{https://192.168.100.20/nagios}.
 
 \section{check\_by\_ssh}
-ssh template  host setup
+Nagios plugin \emph{check\_by\_ssh} allows you to run local resource checks on remote systems via ssh. Only disadvantage of this solution is on large systems as you'll have a lot of open ssh sessions.
+\subsection{host}
+There is need to create user which will be used for running \emph{nagios} checks and install plugins.
+\begin{lstlisting}
+useradd nagios
+passwd nagios #set strong password here, you are going to use keys anyway
+yum install nagios-plugins-ssh nagios-plugins-swap nagios-plugins-load nagios-plugins-users nagios-plugins-disk nagios-plugins-http nagios-plugins-ping nagios-plugins-procs
+\end{lstlisting}
+Check if \emph{nagios} user can run the pluggins.
+
+\subsection{server}
+Create ssh key and distribute it to hosts\footnote{\url{http://www.techrepublic.com/blog/opensource/remotely-monitor-servers-with-the-nagios-checkbyssh-plugin/321}}:
+\begin{lstlisting}
+nagios@nagiosserver:~/ > $ ssh-keygen -t dsa
+Generating public/private dsa key pair.
+Enter file in which to save the key (/home/nagios/.ssh/id_dsa):
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /home/nagios/.ssh/id_dsa.
+Your public key has been saved in /home/nagios/.ssh/id_dsa.pub.
+The key fingerprint is:
+6a:b4:cb:f1:7d:7b:7c:1b:c4:79:2a:5d:5a:16:da:b8 nagios@nagiosserver.com
+nagios@nagiosserver:~/ > $ scp .ssh/id_dsa.pub user@remotehost.com:~/.ssh/authorized_keys
+nagios@nagiosserver:~/ > $ ssh user@remotehost.com
+user@remotehost:~/ > $
+\end{lstlisting}
+Create new file which will host all \emph{check\_by\_ssh} related objects \emph{/etc/nagios/objects/linux-ssh.cfg} and tell Nagios to use it by adding to \emph{nagios.cfg}:
+\begin{lstlisting}
+# NRPE related configuration
+cfg_file=/etc/nagios/objects/linux-ssh.cfg
+\end{lstlisting}
+Define \emph{check\_by\_ssh} command in \emph{commands.cfg}:
+\begin{lstlisting}
+###############################################################################
+# SSH CHECK COMMAND
+#
+# Command to use SSH to check remote host systems
+###############################################################################
+define command{
+        command_name check_by_ssh
+        command_line $USER1$/check_by_ssh -H $HOSTADDRESS$ -C $ARG1$
+        }
+\end{lstlisting}
+The \emph{linux-ssh.cfg} file is quite easy to create, all you need to do is:
+\begin{itemize}
+\item Copy \emph{linux-nrpe.cfg} to \emph{linux-ssh.cfg}.
+\item Change all \emph{linux-nrpe} to \emph{linux-ssh}.
+\item Change all \emph{nrpe-hosts} to \emph{ssh-hosts}.
+\item Change all \emph{check\_nrpe} to \emph{check\_by\_ssh}.
+\item Define your hosts, starting with rewriting \emph{Splunk} host definition.
+\end{itemize}
+
+
 \section{snmp}
-snmp template  host setup
+Because of lack of resources and as this setup is not that usual, this option ended up untested. But for theory there is good guide on \url{http://www.logix.cz/michal/devel/nagios/}.
+
 
 \chapter{Splunk}
 Splunk deployment in this use case isn't really interesting as only one instance of \emph{splunk} and one instance of \emph{splunkforwarder} is going to be set up.
