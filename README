@@ -1,0 +1,1 @@
+This work tries to explore Nagios and Splunk integration. Idea is to monitor several machines with Nagios and report changes in their state to Splunk, allowing not only reporting of the incidents but also analysis on larger scale. Based on use of Splunk this could provide trend prediction which is Nagios lacking at the moment.
