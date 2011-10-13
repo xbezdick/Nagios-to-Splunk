@@ -29,24 +29,38 @@
 \usepackage{color}
 \usepackage{listings}
 \lstset{ %
-%language=C++,                % choose the language of the code
+language=bash,                % choose the language of the code
 basicstyle=\footnotesize,       % the size of the fonts that are used for the code
-numbers=left,                   % where to put the line-numbers
-numberstyle=\footnotesize,      % the size of the fonts that are used for the line-numbers
-stepnumber=1,                   % the step between two line-numbers. If it is 1 each line will be numbered
-numbersep=5pt,                  % how far the line-numbers are from the code
-backgroundcolor=\color{white},  % choose the background color. You must add \usepackage{color}
+%numbers=left,                   % where to put the line-numbers
+%numberstyle=\footnotesize,      % the size of the fonts that are used for the line-numbers
+%stepnumber=1,                   % the step between two line-numbers. If it is 1 each line will be numbered
+%numbersep=5pt,                  % how far the line-numbers are from the code
+%backgroundcolor=\color{white},  % choose the background color. You must add \usepackage{color}
 showspaces=false,               % show spaces adding particular underscores
 showstringspaces=false,         % underline spaces within strings
 showtabs=false,                 % show tabs within strings adding particular underscores
 frame=single,   		% adds a frame around the code
-tabsize=2,  		% sets default tabsize to 2 spaces
-captionpos=b,   		% sets the caption-position to bottom
+columns=flexible,
+keepspaces=true,
+tabsize=4,  		% sets default tabsize to 2 spaces
+%captionpos=b,   		% sets the caption-position to bottom
 breaklines=true,    	% sets automatic line breaking
-breakatwhitespace=false,    % sets if automatic breaks should only happen at whitespace
+breakatwhitespace=true,    % sets if automatic breaks should only happen at whitespace
 %escapeinside={\%}{)}          % if you want to add a comment within your code
 }
 
+%\makeatletter
+%\def\lst@filenamerpl{_\textunderscore $\textdollar --\- -\-}
+%\makeatother
+%\lstset{columns=flexible}
+%\lstset{keepspaces=true}
+%\lstset{showspaces=true}
+%\makeatletter
+%\def\lst@visiblespace{\textcolor{codebg}{-}}
+%\makeatother
+%\makeatletter
+%\def\lst@outputspace{{\ifx\lst@bkgcolor\empty\color{white}\else\lst@bkgcolor\fi\lst@visiblespace}}
+%\makeatother
 
 \author{Lukáš Bezdička}
 \title{Nagios to Splunk}
@@ -69,10 +83,11 @@ Splunk is enterprise software used to monitor, report and analyze the machine da
 \setcounter{tocdepth}{3}
 \setcounter{page}{1}
 \pagenumbering{arabic}
+
 \tableofcontents
 
 \chapter{Theory and Setup}
-The idea is best described by picture [\ref{NtS}]. Checks on particular hosts are performed by running scripts invoked from nrpe\footnote{Nagios Remote Plugin Executor - \url{http://nagios.sourceforge.net/docs/3\_0/addons.html}}, via ssh or by snmpd. For each of these there is an Nagios plugin namely check\_by\_nrpe, check\_by\_ssh and check\_snmp\_extend. Nagios determines the status of a host or service by evaluating the return code from plugins. These are:
+The idea is best described by picture [\ref{NtS}]. Checks on particular hosts are performed by running scripts invoked from nrpe\footnote{Nagios Remote Plugin Executor - \url{http://nagios.sourceforge.net/docs/3\_0/addons.html}}, via ssh or by \emph{snmpd}. For each of these there is an Nagios plugin namely check\_by\_nrpe, check\_by\_ssh and check\_snmp\_extend. Nagios determines the status of a host or service by evaluating the return code from plugins. These are:
 \begin{figure}[hbpt]
 \begin{center}
 \begin{tabular}{|c|c|c|}
@@ -104,7 +119,7 @@ Actual setup consisted of:
 \item VM - Nagios: Running nagios and collecting data through NRPE on Splunk and Hypervisor.
 \item VMM - AthenA: Running virtual machines and generating at least some interesting data for Nagios and Splunk.
 \end{itemize}
-Operating systems used were Fedora 15 for hypervisor and Scientific Linux 6.1 for virtual machines so this process should be similar or same on all of the latest RedHat-like systems.
+Operating systems used were Fedora 15 for hypervisor and Scientific Linux 6.1 for virtual machines, so this process should be similar or same on all of the latest RedHat-like systems.
 
 \section{Hypervisor}
 Required packages for virtualisation with KVM:
@@ -120,7 +135,8 @@ chkcofig ksmtuned on
 systemctl start ksmtuned.service
 \end{lstlisting}
 The KSM is enabled by default but sharing only 2000 pages. By starting \emph{ksm} service you can share up to half of system's memory. To control and tune \emph{ksm} there is \emph{ksmtuned} daemon with configuration in \emph{/etc/ksmtuned.conf}.\footnote{\url{http://docs.redhat.com/docs/en-US/Red\_Hat\_Enterprise\_Linux/6/html/Virtualization/chap-KSM.html}}
-Vurtual Machine Manager has quite straightforward GUI so only note about network, as I wanted to use dhcp to configure hostnames and ips, just disable dhcp for virtual network and setup \emph{dhcpd}:
+
+Virtual Machine Manager has quite straightforward GUI, so only note about network, as I wanted to use dhcp to configure hostnames and ips, just disable dhcp for virtual network and setup \emph{dhcpd}:
 
 \begin{lstlisting}
 #/etc/dhcp/dhcpd.conf
@@ -177,23 +193,31 @@ pvscan
 vgchange -ay
 mount /dev/VolGroup/lv_root /mnt/
 \end{lstlisting}
+And close them:
+\begin{lstlisting}
+umount /dev/VolGroup/lv_root
+vgchange -an
+kpartx -d /dev/loop1
+losetup -d /dev/loop1
+\end{lstlisting}
 
 \chapter{Nagios}
 
 Setting up Nagios can get quite complex and actual setup may vary based on real size and state of network. In this case we'll create templates for three types of hosts depending on way they are going to be checked. To get Nagios running you need to install \emph{httpd} and \emph{php} and for ssl you need \emph{mod\_ssl}:
 \begin{lstlisting}
-yum install nagios nagios-plugins nagios-devel httpd mod_ssl php
+yum install nagios nagios-plugins nagios-devel httpd mod_ssl php nagios-plugins-ping nagios-plugins-http nagios-plugins-ssh
 \end{lstlisting}
 Change \emph{ServerName} directive in \emph{/etc/httpd/conf/httpd.conf} to corresponding ip.
-Edit \emph{/etc/httpd/conf.d/nagios.conf}, leave \emph{Allow from all} but enable \emph{SSLRequireSSL} for security reasons. Start \emph{httpd} daemon:
+Edit \emph{/etc/httpd/conf.d/nagios.conf}, leave "\emph{Allow from all}" but enable "\emph{SSLRequireSSL}" for security reasons. Start \emph{httpd} daemon:
 \begin{lstlisting}
 chkconfig httpd on
 service httpd start
+chkconfig nagios on # already configure start on boot
 \end{lstlisting}
 Web interface configuration is located in \emph{/etc/nagios/cgi.cfg}. To allow \emph{guest} login add \emph{authorized\_for\_read\_only=guest}. You can also enable integration functionality with Splunk here by adding:
 \begin{lstlisting}
 enable_splunk_integration=1
-splunk_url=http://<host>:<port>/
+splunk_url=http://<host>:<port>/en-US/app/search/flashtimeline
 \end{lstlisting}
 Where \emph{<host>} stands for ip or hostname and \emph{<port>} is port of web interface (usually 8000). This way you'll be presented with "Splunk It" links in various places in the web interface.
 \newline Setup passwords for \emph{nagiosadmin}, \emph{guest}:
@@ -205,14 +229,14 @@ htpasswd /etc/nagios/passwd guest
 The main configuration file \emph{/etc/nagios/nagios.cfg} is basically self-explanatory with the comments inside of it. So only few notes: 
 \begin{itemize}
 \item \emph{log\_file=/var/log/nagios/nagios.log} will be used later for splunk\_forwarder.
-\item \emph{cfg\_file} and \emph{cfg\_dir} specify object configuration files or directories.
-\item \emph{check\_external\_commands=1} in order to allow commands to be executed from the web interface.
+\item \emph{cfg\_file} and \emph{cfg\_dir} specify object configuration files or directories to scan for configuration files.
+\item set \emph{check\_external\_commands=1} in order to allow commands to be executed from the web interface.
 \end{itemize}
 External commands file will probably have broken access rights, to fix this:
 \begin{lstlisting}
 chown nagios:apache /var/spool/nagios/cmd/nagios.cmd
 \end{lstlisting}
-Base configuration in \emph{nagios.conf} should contain:
+Basic configuration in \emph{nagios.conf} should contain:
 \begin{lstlisting}
 # OBJECT CONFIGURATION FILE(S)
 # These are the object configuration files in which you define hosts,
@@ -224,7 +248,9 @@ cfg_file=/etc/nagios/objects/commands.cfg
 cfg_file=/etc/nagios/objects/contacts.cfg
 cfg_file=/etc/nagios/objects/timeperiods.cfg
 cfg_file=/etc/nagios/objects/templates.cfg
+cfg_file=/etc/nagios/objects/contactgroups.cfg
 \end{lstlisting}
+Don't forget to open 443 port for https in iptables and start \emph{nagios} service.
 
 \section{Objects}
 Objects are all the elements that are involved in the monitoring and notification logic. In other words there is basic set of object types which you can configure in flexible template format, allowing object inheritance to create and manage complex configurations.\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/objectdefinitions.html}} Basic object types are:
@@ -255,6 +281,7 @@ define timeperiod{
         }
 # 'czech_holidays'  timeperiod definition with Easter for 2012~2017
 define timeperiod{
+		name			czech_holidays
         timeperiod_name czech_holidays
         alias           Czech holidays
         january 1       00:00-00:00 ; Den obnovy samostatneho ceskeho statu
@@ -300,7 +327,7 @@ define timeperiod{
 \end{lstlisting}
 
 \subsection{\emph{contacts.cfg}}
-One can specify means of notification by \emph{*\_notification\_commands} by adding command definition of his own \footnote{For example Nagios jabber notifications -\url{http://www.techadre.com/content/tweak-nagios-jabber-xmpp-notifications}} (described later). Example of \emph{/etc/nagios/objects/contacts.cfg}:
+One can specify means of notification with \emph{*\_notification\_commands} by adding own command definition\footnote{For example Nagios jabber notifications -\url{http://www.techadre.com/content/tweak-nagios-jabber-xmpp-notifications}} (described later). Example of \emph{/etc/nagios/objects/contacts.cfg}:
 \begin{lstlisting}
 # service_notification_options are w,u,c,r,f,n
 # w=warning u=unknown c=critical r=recovery f=flapping n=none
@@ -314,8 +341,8 @@ define contact{
         host_notification_period        workhours
         service_notification_options    w,u,c,r,f,n ;annoying
         host_notification_options       d,u,r,f,n ;annoying
-        service_notification_commands   notify-by-email
-        host_notification_commands      host-notify-by-email
+        service_notification_commands   notify-service-by-email
+        host_notification_commands      notify-host-by-email
         email                           social@v3.sk
         }
 
@@ -326,50 +353,49 @@ define contact{
         host_notification_period        24x7
         service_notification_options    c,r
         host_notification_options       d,r
-        service_notification_commands   notify-by-email
-        host_notification_commands      host-notify-by-email
-        email                           super@admin
+        service_notification_commands	notify-service-by-email
+        host_notification_commands 		notify-host-by-email
+        email                           root@localhost
         }
 \end{lstlisting}
 
 \subsection{\emph{contactgroups.cfg}}
 On larger scale it's better to define groups in separate file, for example \emph{/etc/nagios/objects/contactgroups.cfg}:
 \begin{lstlisting}
-# 'haters' contact group definitions
 define contactgroup{
         contactgroup_name       haters
         alias                   Nagios Haters Support Group
         members                 xbezdick,superadmin
-        ;contactgroup_members   other_groups
-        }
+        ;contactgroup_members   other_groups	      }
 \end{lstlisting}
 
 \subsection{\emph{commands.cfg}}
-Commands definition is quite straightforward where in command line you can use predefined macros\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/macros.html}}:
+Commands definition is quite straightforward where in commands line you can use predefined macros\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/macros.html}}. Standard format is:
 \begin{lstlisting}
 define command{
 	command_name	command_name
 	command_line	command_line
    	}
 \end{lstlisting}
+Default commands.cfg is quite ok, we'll add few commands later.
 
 \subsection{\emph{templates.cfg}}
 Templates are powerful feature of Nagios. They are basically objects which cab be inherited. There are three variables affecting recursion and inheritance that are present in all object definitions:
 \begin{itemize}
-\item name - template name which can be referenced in other objects
-\item use - specifies template object you want to inherit from
-\item register - is boolean defining if object is "registered" with Nagios. Values are as follows: 0 = do NOT register object definition, 1 = register object definition (this is the default). This variable is NOT inherited; every (partial) object definition used as a template must explicitly set the register directive to be 0. This prevents the need to override an inherited register directive with a value of 1 for every object that should be registered.\footnote{\url{http://nagios.sourceforge.net/docs/3_0/objectinheritance.html}}
+\item \emph{name} - template name which can be referenced in other objects
+\item \emph{use} - specifies template object you want to inherit from
+\item \emph{register} - is boolean defining if object is "registered" with Nagios. Values are as follows: 0 = do NOT register object definition, 1 = register object definition (this is the default). This variable is NOT inherited; every (partial) object definition used as a template must explicitly set the register directive to be 0. This prevents the need to override an inherited register directive with a value of 1 for every object that should be registered.\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/objectinheritance.html}}
 \end{itemize}
 File \emph{/etc/nagios/object/templates.cfg} contains generic templates for hosts, services, etc. Specific template examples will be in next sections.
 
 \section{check\_by\_nrpe}
-Nagios Remote Plugin Execution is one of most used ways to monitor network, all communication is by default encrypted by Anon-DH which allows for an encrypted SSL/TLS Connection without using pre-generated keys or certificates. But \emph{nrpe} uses only host based authentication.
+Nagios Remote Plugin Execution is one of the most used plugins to monitor remote systems, all communication is by default encrypted by Anon-DH which allows for an encrypted SSL/TLS Connection without using pre-generated keys or certificates. But \emph{nrpe} uses only host based authentication.
 \subsection{hosts}
 Every host that is going to be checked by NRPE has to have \emph{nrpe} and nagios-plugins installed according to host definition:
 \begin{lstlisting}
 yum install nrpe nagios-plugins-ssh nagios-plugins-swap nagios-plugins-load nagios-plugins-users nagios-plugins-disk nagios-plugins-http nagios-plugins-ping nagios-plugins-procs
 \end{lstlisting}
-In this case set \emph{allowed\_hosts} in \emph{/etc/nagios/nrpe.cfg} to 192.168.100.20 and \emph{server\_address} to host ip:
+In this case set \emph{allowed\_hosts} in \emph{/etc/nagios/nrpe.cfg} to 192.168.100.20 and \emph{server\_address} to host ip. Also don't forget about command definitions, set them accordingly to your host definition:
 \begin{lstlisting}
 # SERVER ADDRESS
 # Address that nrpe should bind to in case there are more than one interface
@@ -390,6 +416,14 @@ server_address=192.168.100.10
 # NOTE: This option is ignored if NRPE is running under either inetd or xinetd
 
 allowed_hosts=192.168.100.20
+
+command[check_users]=/usr/lib/nagios/plugins/check_users -w 5 -c 10
+command[check_load]=/usr/lib/nagios/plugins/check_load -w 15,10,5 -c 30,25,20
+command[check_disk]=/usr/lib/nagios/plugins/check_disk -w 20% -c 10% -p /dev/mapper/VolGroup-lv_root
+command[check_zombie_procs]=/usr/lib/nagios/plugins/check_procs -w 5 -c 10 -s Z
+command[check_total_procs]=/usr/lib/nagios/plugins/check_procs -w 150 -c 200
+command[check_swap]=/usr/lib/nagios/plugins/check_swap -w 20 -c 10
+command[check_procs]=/usr/lib/nagios/plugins/check_procs -w 250 -c 400 -s RSZDT
 \end{lstlisting}
 Default \emph{nrpe} port is 5666, allow connections in \emph{iptables} by adding following line before "\emph{-A INPUT -j REJECT...}" line:
 \begin{lstlisting}
@@ -448,7 +482,7 @@ define host{
           address   192.168.100.10                    ; IP address of the server
           }
 define hostgroup {
-        hostgroup_name  nrpe-hosts
+        hostgroup_name  nrpe_hosts
         alias           NRPE group
         members         Splunk                        ; Comma separated host_names
 
@@ -456,7 +490,7 @@ define hostgroup {
 # Define a service to "ping" the machine
 define service{
         use                             generic-service         ; Name of service template to use
-        hostgroup_name                  nrpe-hosts
+        hostgroup_name                  nrpe_hosts
         service_description             PING
 		check_command			        check_ping!100.0,20%!500.0,60% ; Ping from nagios server
         }
@@ -465,7 +499,7 @@ define service{
 # < 10% free space on partition.
 define service{
         use                             generic-service
-        hostgroup_name                  nrpe-hosts
+        hostgroup_name                  nrpe_hosts
         service_description             Root Partition
 	    check_command                   check_nrpe!check_disk!20%!10%!/
         }
@@ -474,7 +508,7 @@ define service{
 # if > 50 users.
 define service{
         use                             generic-service
-        hostgroup_name                  nrpe-hosts
+        hostgroup_name                  nrpe_hosts
         service_description             Current Users
 	    check_command                   check_nrpe!check_users!20!50
         }
@@ -490,7 +524,7 @@ define service{
 # Define a service to check the load on the local machine. 
 define service{
         use                             generic-service
-        hostgroup                       nrpe-hosts
+        hostgroup                       nrpe_hosts
         service_description             Current Load
 	    check_command			        check_nrpe!check_load!5.0,4.0,3.0!10.0,6.0,4.0
         }
@@ -528,31 +562,37 @@ Nagios plugin \emph{check\_by\_ssh} allows you to run local resource checks on r
 \subsection{host}
 There is need to create user which will be used for running \emph{nagios} checks and install plugins.
 \begin{lstlisting}
-useradd nagios
-passwd nagios #set strong password here, you are going to use keys anyway
-yum install nagios-plugins-ssh nagios-plugins-swap nagios-plugins-load nagios-plugins-users nagios-plugins-disk nagios-plugins-http nagios-plugins-ping nagios-plugins-procs
+useradd user
+passwd user #set strong password here, you are going to use keys anyway
+yum install nagios-plugins-ssh nagios-plugins-swap nagios-plugins-load nagios-plugins-users\
+ nagios-plugins-disk nagios-plugins-http nagios-plugins-ping nagios-plugins-procs
 \end{lstlisting}
 Check if \emph{nagios} user can run the pluggins.
 
 \subsection{server}
+Install \emph{check\_by\_ssh} plugin:
+\begin{lstlisting}
+yum install nagios-plugins-by_ssh
+\end{lstlisting}
 Create ssh key and distribute it to hosts\footnote{\url{http://www.techrepublic.com/blog/opensource/remotely-monitor-servers-with-the-nagios-checkbyssh-plugin/321}}:
 \begin{lstlisting}
-nagios@nagiosserver:~/ > $ ssh-keygen -t dsa
+# ssh-keygen -t dsa
 Generating public/private dsa key pair.
-Enter file in which to save the key (/home/nagios/.ssh/id_dsa):
+Enter file in which to save the key (/var/spool/nagios/.ssh/id_dsa):
 Enter passphrase (empty for no passphrase):
 Enter same passphrase again:
-Your identification has been saved in /home/nagios/.ssh/id_dsa.
-Your public key has been saved in /home/nagios/.ssh/id_dsa.pub.
+Your identification has been saved in /var/spool/nagios/.ssh/id_dsa.
+Your public key has been saved in /var/spool/nagios/.ssh/id_dsa.pub.
 The key fingerprint is:
-6a:b4:cb:f1:7d:7b:7c:1b:c4:79:2a:5d:5a:16:da:b8 nagios@nagiosserver.com
-nagios@nagiosserver:~/ > $ scp .ssh/id_dsa.pub user@remotehost.com:~/.ssh/authorized_keys
-nagios@nagiosserver:~/ > $ ssh user@remotehost.com
-user@remotehost:~/ > $
+6a:b4:cb:f1:7d:7b:7c:1b:c4:79:2a:5d:5a:16:da:b8 nagios@nagios.com
+# scp .ssh/id_dsa.pub <user>@<host>:~/.ssh/authorized_keys
+# ssh <user>@<host>
+# cp .ssh/known_hosts /var/spool/nagios/.ssh/
+# chown nagios:nagios -R /var/spool/nagios/.ssh
 \end{lstlisting}
 Create new file which will host all \emph{check\_by\_ssh} related objects \emph{/etc/nagios/objects/linux-ssh.cfg} and tell Nagios to use it by adding to \emph{nagios.cfg}:
 \begin{lstlisting}
-# NRPE related configuration
+# SSH related configuration
 cfg_file=/etc/nagios/objects/linux-ssh.cfg
 \end{lstlisting}
 Define \emph{check\_by\_ssh} command in \emph{commands.cfg}:
@@ -561,17 +601,19 @@ Define \emph{check\_by\_ssh} command in \emph{commands.cfg}:
 # SSH CHECK COMMAND
 #
 # Command to use SSH to check remote host systems
+# WARNING: this command is setup to run on 64bit systems atm
 ###############################################################################
 define command{
         command_name check_by_ssh
-        command_line $USER1$/check_by_ssh -H $HOSTADDRESS$ -C $ARG1$
+        command_line $USER1$/check_by_ssh -l <user> -H $HOSTADDRESS$ -C \
+	           "/usr/lib64/nagios/plugins/$ARG1$ -w $ARG2$ -c $ARG3$"
         }
 \end{lstlisting}
 The \emph{linux-ssh.cfg} file is quite easy to create, all you need to do is:
 \begin{itemize}
 \item Copy \emph{linux-nrpe.cfg} to \emph{linux-ssh.cfg}.
 \item Change all \emph{linux-nrpe} to \emph{linux-ssh}.
-\item Change all \emph{nrpe-hosts} to \emph{ssh-hosts}.
+\item Change all \emph{nrpe\_hosts} to \emph{ssh-hosts}.
 \item Change all \emph{check\_nrpe} to \emph{check\_by\_ssh}.
 \item Define your hosts, starting with rewriting \emph{Splunk} host definition.
 \end{itemize}
@@ -621,7 +663,7 @@ yum install splunkforwarder-4.2.3-105575.i386.rpm                # install splun
 /opt/splunkforwarder/bin/splunk set deploy-poll 192.168.100.10:8089 # 192.168.100.10 = splunk host # configure deployment server
 /opt/splunkforwarder/bin/splunk add forward-server 192.168.100.10:9997 # forward data to specific indexer TODO: add ssl
 \end{lstlisting}
-Final stem is to setup forwarder's input, this is done in \emph{/opt/splunkforwarder/etc/system/local/inputs.conf}:
+Final step is to setup forwarder's input, this is done in \emph{/opt/splunkforwarder/etc/system/local/inputs.conf}:
 \begin{lstlisting}
 [default]
 host = nagios
@@ -629,7 +671,59 @@ host = nagios
 [monitor:///var/log/nagios/nagios.log]
 disabled = false
 \end{lstlisting}
-Now restart \emph{splunk forwarder}, give it few minutes to index \emph{nagios} logs and you can finally click on "Splunk it" links in Nagios web interface and also run own queries.
+Now restart \emph{splunk forwarder}, give it few minutes to index \emph{nagios} logs and you can finally click on "Splunk it" links in Nagios web interface and also run own queries. You can also add Deployment monitor app in your \emph{splunk} instance to watch over deployment.
+\chapter{Conclusion}
+Nagios is now watching over hosts and generates data for Splunk to index. Basically every failure, or status change get's indexed. We can see that there is critical load on AthenA[\ref{Nagios}]. So let's look what does "Splunk It" button[\ref{SplunkIt}]. Let's see how often we had CRITICAL report from Nagios in recent days[\ref{report}]. And finally sample of notification mail:
+\begin{lstlisting}
+From nagios@nagios.localdomain  Thu Oct 13 01:49:52 2011
+Return-Path: <nagios@nagios.localdomain>
+X-Original-To: root@localhost
+Delivered-To: root@localhost.localdomain
+Date: Thu, 13 Oct 2011 01:49:51 +0200
+To: root@localhost.localdomain
+Subject: ** PROBLEM Service Alert: VMM machine/Root Partition is CRITICAL
+ **
+User-Agent: Heirloom mailx 12.4 7/29/08
+Content-Type: text/plain; charset=us-ascii
+From: nagios@nagios.localdomain
+Status: R
+
+***** Nagios *****
+
+Notification Type: PROBLEM
+
+Service: Root Partition
+Host: VMM machine
+Address: 192.168.100.1
+State: CRITICAL
+
+Date/Time: Thu Oct 13 01:49:51 CEST 2011
+
+Additional Info:
+
+DISK CRITICAL - free space: / 5233 MB (14% inode=81%): /dev 994 MB (99% inode=99%): /dev/shm 956 MB (95% inode=99%): /run 1003 MB (99% inode=99%): /sys/fs/cgroup 1004 MB (100% inode=99%): /media 1004 MB (100% inode=99%): /boot 112 MB (61% inode=99%): /home 23159 MB (5% inode=99%): /home/social/Downloads 94481 MB (84% inode=99%): /tmp 5233 MB (14% inode=81%): /var/tmp 5233 MB (14% inode=81%):
+\end{lstlisting}
+\begin{figure}[hbpt]
+\begin{center}
+\includegraphics[width=\linewidth]{Nagios.pdf}
+\end{center}
+\caption{"Nagios interface.}
+\label{Nagios}
+\end{figure}
+\begin{figure}[hbpt]
+\begin{center}
+\includegraphics[width=\linewidth]{Nagios_splunk_it.pdf}
+\end{center}
+\caption{"Splunk it" query.}
+\label{SplunkIt}
+\end{figure}
+\begin{figure}[hbpt]
+\begin{center}
+\includegraphics[width=\linewidth]{Nagios_Critical.pdf}
+\end{center}
+\caption{Splunk view.}
+\label{report}
+\end{figure}
 \newpage
 \appendix
 %\chapter{\emph{/etc/nagios/nagios.cfg}}
