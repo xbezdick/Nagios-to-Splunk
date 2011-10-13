@@ -70,14 +70,11 @@ breakatwhitespace=true,    % sets if automatic breaks should only happen at whit
 \pagenumbering{roman}
 
 \chapter*{Abstract}
-This work tries to explore Nagios and Splunk integration. Idea is to monitor several machines with Nagios and report changes in their state to Splunk, allowing not only reporting of the incidents but also analysis on larger scale. Based on use of Splunk this could provide trend prediction which is Nagios lacking at the moment.\footnote{\url{http://en.wikipedia.org/wiki/Comparison\_of\_network\_monitoring\_systems}}
-
+This work tries to explore Nagios and Splunk integration. Idea is to monitor several machines with Nagios and report changes in their state to Splunk, allowing not only reporting of the incidents but also analysis on larger scale. Splunk could provide trend prediction which is Nagios lacking at the moment.\footnote{\url{http://en.wikipedia.org/wiki/Comparison\_of\_network\_monitoring\_systems}}
 \section*{Nagios}
-
-Nagios is open-source infrastructure monitoring system. It's used to alert system administrators about problems usually before they are noticed by end user. This is done by periodical checks of resources through Nagios plugins. Nagios already has huge database of available plugins and offers well documented API for writing new ones.\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/pluginapi.html}}
-
+Nagios is an open-source infrastructure monitoring system. It's used to alert system administrators about problems, usually before they are noticed by the end user. This is achieved by periodical checks of resources through Nagios plugins. Nagios already has a huge database of available plugins and offers well documented API for writing new ones.\footnote{\url{http://nagios.sourceforge.net/docs/3\_0/pluginapi.html}}
 \section*{Splunk}
-Splunk is enterprise software used to monitor, report and analyze the machine data produced by the applications, systems and infrastructure that run a business. Splunk lets users search, monitor and analyze machine-generated data via web-style interface. Splunk captures indexes and correlates real-time data in a searchable repository from which it can generate graphs, reports, alerts and dashboards.\footnote{\url{https://secure.wikimedia.org/wikipedia/en/wiki/Splunk}}
+Splunk is an enterprise software used to monitor, report and analyze the machine data produced by the applications, systems and infrastructure that run a business. Splunk lets users search, monitor and analyze machine-generated data via web-style interface. Splunk captures indexes and correlates real-time data in a searchable repository from which it can generate graphs, reports, alerts and dashboards.\footnote{\url{https://secure.wikimedia.org/wikipedia/en/wiki/Splunk}}
 \newpage
 
 \setcounter{tocdepth}{3}
@@ -87,7 +84,7 @@ Splunk is enterprise software used to monitor, report and analyze the machine da
 \tableofcontents
 
 \chapter{Theory and Setup}
-The idea is best described by picture [\ref{NtS}]. Checks on particular hosts are performed by running scripts invoked from nrpe\footnote{Nagios Remote Plugin Executor - \url{http://nagios.sourceforge.net/docs/3\_0/addons.html}}, via ssh or by \emph{snmpd}. For each of these there is an Nagios plugin namely check\_by\_nrpe, check\_by\_ssh and check\_snmp\_extend. Nagios determines the status of a host or service by evaluating the return code from plugins. These are:
+The chosen architecture is best described by picture [\ref{NtS}]. Checks on particular hosts are performed by running scripts invoked from nrpe\footnote{Nagios Remote Plugin Executor - \url{http://nagios.sourceforge.net/docs/3\_0/addons.html}}, via ssh or by snmpd. For each of these there is a Nagios plugin, namely check\_by\_nrpe, check\_by\_ssh and check\_snmp\_extend. Nagios determines the status of a host or service by evaluating the return code from plugins. These are:
 \begin{figure}[hbpt]
 \begin{center}
 \begin{tabular}{|c|c|c|}
@@ -113,7 +110,7 @@ Nagios logs every host or service state change and depending on configuration se
 \label{NtS}
 \end{figure}
 
-Actual setup consisted of:
+The actual setup consisted of:
 \begin{itemize}
 \item VM - Splunk: Running splunkd and recieving data from other sources.
 \item VM - Nagios: Running nagios and collecting data through NRPE on Splunk and Hypervisor.
@@ -122,7 +119,7 @@ Actual setup consisted of:
 Operating systems used were Fedora 15 for hypervisor and Scientific Linux 6.1 for virtual machines, so this process should be similar or same on all of the latest RedHat-like systems.
 
 \section{Hypervisor}
-Required packages for virtualisation with KVM:
+Required packages for virtualization with KVM:
 \begin{lstlisting}
 yum install libvirt qemu-kvm virt-manager virt-viewer dhcp
 \end{lstlisting} 
@@ -179,10 +176,10 @@ Default minimal install of SL6.1 is quite sufficient and depending on setup only
 \begin{lstlisting}
 yum install http://download.fedora.redhat.com/pub/epel/6/i386/epel-release-6-5.noarch.rpm
 \end{lstlisting}
-Update might be broken because of *-logos packages so update with:
-\begin{lstlisting}
-yum --skip-broken update
-\end{lstlisting}
+%Update might be broken because of *-logos packages so update with:
+%\begin{lstlisting}
+%yum --skip-broken update
+%\end{lstlisting}
 \subsection{VM images}
 Small note about offline work with VMs, when you can't or don't want to run them, but just want to work with the files, use:
 \begin{lstlisting}
